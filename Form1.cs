@@ -44,7 +44,7 @@ public partial class Form1 : Form
         this.DoubleBuffered = true;
 
         updateTimer = new System.Windows.Forms.Timer();
-        updateTimer.Interval = 16; // ~15 fps
+        updateTimer.Interval = 1; // ~15 fps
         updateTimer.Tick += UpdateLoop;
 
     }
@@ -133,7 +133,7 @@ public partial class Form1 : Form
         Marshal.Copy(data.Scan0, pixels, 0, byteCount);
 
         // --- 1. Row displacement: shift random scanlines left/right ---
-        /*byte[] rowBuf = new byte[stride];
+        byte[] rowBuf = new byte[stride];
         for (int y = 0; y < height; y++)
         {
             if (rng.Next(40) == 0)
@@ -153,13 +153,14 @@ public partial class Form1 : Form
                     Array.Copy(rowBuf, srcX * 4, pixels, rowStart + x * 4, 4);
                 }
             }
-        }*/
+        }
+        byte[] src = (byte[])pixels.Clone(); // read from a snapshot while writing pixels
 
         // --- 2. RGB channel shift (chromatic aberration) ---
         int rShift = -(int)Math.Floor((Math.Sin(time)*40)-20);
         int bShift = (int)Math.Floor((Math.Sin(time)*40)-20);
 
-        byte[] src = (byte[])pixels.Clone(); // read from a snapshot while writing pixels
+        
         for (int y = 0; y < height; y++)
         {
             int rowStart = y * stride;
@@ -181,24 +182,26 @@ public partial class Form1 : Form
         }
 
 
-
         // -- 3. Green waveform
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
-                int gwave = (int)Math.Floor(Math.Sin(time+x)*Math.Sin(time)*2);
-
+                int gwave = (int)Math.Floor(Math.Sin(time+x)*1);
+                int rwave = (int)Math.Floor(Math.Cos(time+x)*1);
+                int bwave = (int)Math.Floor(Math.Tan(time+x)*1);
                 int gy = y - gwave; if (gy < 0) gy = 0; if (gy >= height) gy = height - 1;
-                int ry = y + gwave; if (ry < 0) ry = 0; if (ry >= height) ry = height - 1;
+                int ry = y - gwave; if (ry < 0) ry = 0; if (ry >= height) ry = height - 1;
+                int by = y - gwave; if (by < 0) by = 0; if (by >= height) by = height - 1;
                 int dstOffset = (y * stride) + (x * 4);
                 int gSrcOffset = (gy * stride) + (x * 4);
                 int rSrcOffset = (ry * stride) + (x * 4);
+                int bSrcOffset = (by * stride) + (x * 4);
                 pixels[dstOffset + 1] = src[gSrcOffset + 1];
                 pixels[dstOffset + 2] = src[rSrcOffset + 2];
+                pixels[dstOffset + 0] = src[bSrcOffset + 0];
             }
         }
-
 
         Marshal.Copy(pixels, 0, data.Scan0, byteCount);
         bmp.UnlockBits(data);

@@ -1,4 +1,6 @@
+
 using System;
+using System.IO;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
@@ -20,6 +22,7 @@ public partial class Form1 : Form
     private Bitmap? currentFrame;
     private int time;
     private readonly Random rng = new Random();
+    private readonly string folderPath = "C:\\Users\\2601192\\Downloads\\ffmpeg-master-latest-win64-gpl-shared\\ffmpeg-master-latest-win64-gpl-shared\\bin\\frames";
 
     protected override CreateParams CreateParams
     {
@@ -97,11 +100,12 @@ public partial class Form1 : Form
             // desktop underneath our own topmost window, not our own glitch.
             g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
         }
+        string filePath =  Path.Combine(folderPath, $"frame_{time:D4}");
+        Bitmap multLayer = getFrame(filePath);
         
-        time += 1;
-        ApplyMultLayer(capture);
+        ApplyMultLayer(capture, multLayer);
         ApplyGlitch(capture);
-
+        time += 1;
         currentFrame?.Dispose();
         currentFrame = capture;
 
@@ -117,24 +121,39 @@ public partial class Form1 : Form
             e.Graphics.DrawImageUnscaled(currentFrame, 0, 0);
         }
     }
+    private Bitmap getFrame(string filePath)
+    {
+        using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+        {
+            // Initialize the bitmap from the stream
+            using (Bitmap tempBmp = new Bitmap(fs))
+            {
+                // Clone it to decouple it entirely from the underlying file stream
+                Bitmap safeBitmap = new Bitmap(tempBmp); 
+                return safeBitmap;
+            }
+        }
+    }
     // Multiply Layer
-    private void ApplyMultLayer(Bitmap basebmp, Bitmap multbmp)
+    private Bitmap ApplyMultLayer(Bitmap basebmp, Bitmap multbmp)
     {
 
-        if (basebmp.Width != blendImg.Width || basebmp.Height != blendImg.Height)
+        if (basebmp.Width != multbmp.Width || basebmp.Height != multbmp.Height)
         {
-            throw new ArgumentException("Images must share identical dimensions.");
+            Bitmap resized = new Bitmap(multbmp, basebmp.Width, basebmp.Height);
+            multbmp = resized;
+            //throw new ArgumentException("Images must share identical dimensions.");
         }
 
-        int width = baseImg.Width;
-        int height = baseImg.Height;
+        int width = basebmp.Width;
+        int height = basebmp.Height;
         Rectangle rect = new Rectangle(0, 0, width, height);
 
-        Bitmap resultImg = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        Bitmap resultbmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
 
-        BitmapData baseData = baseImg.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-        BitmapData blendData = blendImg.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-        BitmapData resultData = resultImg.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        BitmapData baseData = basebmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        BitmapData blendData = multbmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        BitmapData resultData = resultbmp.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
         int byteCount = baseData.Stride * height;
         byte[] baseBytes = new byte[byteCount];
@@ -157,11 +176,11 @@ public partial class Form1 : Form
 
         Marshal.Copy(resultBytes, 0, resultData.Scan0, byteCount);
 
-        baseImg.UnlockBits(baseData);
-        blendImg.UnlockBits(blendData);
-        resultImg.UnlockBits(resultData);
+        basebmp.UnlockBits(baseData);
+        multbmp.UnlockBits(blendData);
+        resultbmp.UnlockBits(resultData);
 
-        return resultImg;
+        return resultbmp;
     }
     // ---------------- Glitch effect ----------------
 

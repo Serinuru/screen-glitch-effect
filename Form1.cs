@@ -16,6 +16,11 @@ public partial class Form1 : Form
     private const int WS_EX_TRANSPARENT = 0x00000020;
     private const int WS_EX_LAYERED = 0x00080000;
     
+    private System.Windows.Forms.Timer updateTimer = null!;
+    private Bitmap? currentFrame;
+    private int time;
+    private readonly Random rng = new Random();
+
     protected override CreateParams CreateParams
     {
         get
@@ -25,11 +30,6 @@ public partial class Form1 : Form
             return cp;
         }
     }
-
-    private System.Windows.Forms.Timer updateTimer = null!;
-    private Bitmap? currentFrame;
-    private int time;
-    private readonly Random rng = new Random();
 
     public Form1()
     {
@@ -44,7 +44,7 @@ public partial class Form1 : Form
         this.DoubleBuffered = true;
 
         updateTimer = new System.Windows.Forms.Timer();
-        updateTimer.Interval = 1; // ~15 fps
+        updateTimer.Interval = 42; // ~15 fps
         updateTimer.Tick += UpdateLoop;
 
     }
@@ -99,6 +99,7 @@ public partial class Form1 : Form
         }
         
         time += 1;
+        ApplyMultLayer(capture);
         ApplyGlitch(capture);
 
         currentFrame?.Dispose();
@@ -116,7 +117,52 @@ public partial class Form1 : Form
             e.Graphics.DrawImageUnscaled(currentFrame, 0, 0);
         }
     }
+    // Multiply Layer
+    private void ApplyMultLayer(Bitmap basebmp, Bitmap multbmp)
+    {
 
+        if (basebmp.Width != blendImg.Width || basebmp.Height != blendImg.Height)
+        {
+            throw new ArgumentException("Images must share identical dimensions.");
+        }
+
+        int width = baseImg.Width;
+        int height = baseImg.Height;
+        Rectangle rect = new Rectangle(0, 0, width, height);
+
+        Bitmap resultImg = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+
+        BitmapData baseData = baseImg.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        BitmapData blendData = blendImg.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        BitmapData resultData = resultImg.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+
+        int byteCount = baseData.Stride * height;
+        byte[] baseBytes = new byte[byteCount];
+        byte[] blendBytes = new byte[byteCount];
+        byte[] resultBytes = new byte[byteCount];
+
+        Marshal.Copy(baseData.Scan0, baseBytes, 0, byteCount);
+        Marshal.Copy(blendData.Scan0, blendBytes, 0, byteCount);
+
+        for (int i = 0; i < byteCount; i += 4)
+        {
+            // Blue, Green, and Red channels multiplied and scaled
+            resultBytes[i]     = (byte)((baseBytes[i]     * blendBytes[i])     / 255); // B
+            resultBytes[i + 1] = (byte)((baseBytes[i + 1] * blendBytes[i + 1]) / 255); // G
+            resultBytes[i + 2] = (byte)((baseBytes[i + 2] * blendBytes[i + 2]) / 255); // R
+            
+            // Retain the base image alpha channel transparency
+            resultBytes[i + 3] = baseBytes[i + 3]; 
+        }
+
+        Marshal.Copy(resultBytes, 0, resultData.Scan0, byteCount);
+
+        baseImg.UnlockBits(baseData);
+        blendImg.UnlockBits(blendData);
+        resultImg.UnlockBits(resultData);
+
+        return resultImg;
+    }
     // ---------------- Glitch effect ----------------
 
     private void ApplyGlitch(Bitmap bmp)
